@@ -84,37 +84,35 @@ listening on ws://0.0.0.0:8765
 hermes reachable at http://host.docker.internal:7237/v1
 ```
 
-#### Intel-iGPU statt CPU
+#### Gemessen: welche Kombination wie schnell ist
 
-Zielhardware ist ein Pentium Gold 8505: **1 P-Core + 4 E-Cores**, dazu eine
-Xe-iGPU mit 48 EUs. Der Whisper-Encoder ist auf dieser CPU der Flaschenhals,
-und er ist genau die Art dichter Rechenarbeit, die eine iGPU gut abnimmt —
-nebenbei bleiben die fünf Kerne für Hermes und den Rest der NAS frei. Hier
-lohnt der Umweg also, anders als auf einem i5.
+Alle Werte auf derselben deutschen Aeusserung (~3 s), i5-8500T mit UHD 630:
 
-Intel veroeffentlicht vorkonvertierte Whisper-Modelle, deshalb entfaellt der
-Export-Schritt:
+| Modell | Backend | Geraet | Zeit |
+|---|---|---|---|
+| small | faster-whisper | CPU | **2,5 s** |
+| small | OpenVINO | GPU | 3,7 s |
+| large-v3-turbo | faster-whisper | CPU | 8,5 s |
+| large-v3-turbo | OpenVINO | GPU | 15,0 s |
+| large-v3-turbo | OpenVINO | CPU | 16,8 s |
+| medium | faster-whisper | CPU | 13,8 s |
 
-```bash
-# in .env:
-#   WHISPER_BACKEND=openvino
-#   WHISPER_DEVICE=GPU
-#   WHISPER_MODEL=OpenVINO/whisper-large-v3-turbo-int8-ov
+Zwei Dinge daran sind kontraintuitiv genug, um sie festzuhalten.
 
-docker compose -f docker-compose.gpu.yml up -d
-```
+**Die iGPU hilft nicht.** Sie war in jeder Paarung langsamer als die CPU. Eine
+integrierte GPU teilt sich den Speicherbus mit der CPU, und Whisper haengt
+genau daran — nicht an Rechenwerken. `docker-compose.gpu.yml` bleibt fuer
+kraeftigere Hardware liegen, ist hier aber die schlechtere Wahl.
 
-Stimmt die Gruppen-ID nicht, sieht OpenVINO die iGPU nicht und faellt still auf
-die CPU zurueck. Pruefen mit `stat -c '%g %G' /dev/dri/renderD128` und
-gegebenenfalls die `group_add`-Zeile anpassen.
+**Kurze Fragen sind nicht schneller.** Whisper arbeitet immer auf einem
+30-Sekunden-Fenster; eine 2-Sekunden-Frage kostet den Encoder so viel wie eine
+25-Sekunden-Frage. "Mal Echtzeit" ist fuer diesen Anwendungsfall die falsche
+Kennzahl — es zaehlt die absolute Zeit pro Turn, und die ist konstant.
 
-Teilt sich die NAS die iGPU mit anderen Diensten — etwa Jellyfin beim
-Transcoding — konkurrieren beide um dieselben Ausfuehrungseinheiten. Das
-bremst im Zweifel beide.
-
-Die Logzeile `stt 4.20s audio in 0.80s (5.2x realtime)` zeigt nach jedem Satz,
-was die Maschine tatsächlich leistet — damit lässt sich CPU gegen iGPU
-vergleichen, statt zu raten.
+Damit ist die Modellgroesse der einzige wirksame Hebel. `small` verhoert sich
+gelegentlich bei Wortendungen ("Nennen wir" statt "Nenn mir"); fuer einen
+Assistenten, dessen Antwort ohnehin ein Sprachmodell formuliert, ist das meist
+verkraftbar. Ein Kommandoparser waere hier die falsche Architektur.
 
 ### 3. Firmware flashen
 

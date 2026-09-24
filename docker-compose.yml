@@ -1,20 +1,34 @@
+# Standardbetrieb: Whisper auf der CPU. Eine Datei, kein Override:
+#
+#   docker compose up -d
+#   docker compose logs -f
+#
+# Braucht die .env daneben (wegen HERMES_KEY). Die Whisper-Werte darin werden
+# hier ueberschrieben -- environment sticht env_file.
+#
+# Modellgroesse ist der einzige wirksame Latenzhebel, gemessen auf einem
+# i5-8500T an derselben ~3s-Aeusserung:
+#
+#   small            2,5s      verhoert sich gelegentlich bei Wortendungen
+#   medium          13,8s
+#   large-v3-turbo   8,5s
+#
+# Die Intel-iGPU hilft nicht (siehe docker-compose.gpu.yml); sie teilt sich
+# den Speicherbus mit der CPU, und genau daran haengt Whisper.
 services:
   bridge:
-    # Fertiges Image aus der GitHub Action. Auf der NAS reicht damit
-    # `docker compose pull && docker compose up -d` — kein lokaler Build.
-    # Lokal bauen weiterhin mit `docker compose up -d --build`.
     image: ghcr.io/mavnezz/jarvis_hermes/bridge:latest
-    build:
-      context: ./bridge
-      args:
-        # Auf 1 setzen, um den OpenVINO-Pfad fuer die Intel-iGPU mitzubauen.
-        WITH_OPENVINO: "${WITH_OPENVINO:-0}"
     container_name: jarvis-bridge
     restart: unless-stopped
     ports:
       - "8765:8765"
     env_file:
       - .env
+    environment:
+      WHISPER_BACKEND: faster-whisper
+      WHISPER_DEVICE: cpu
+      WHISPER_MODEL: small
+      WHISPER_COMPUTE: int8
     volumes:
       - voices:/voices
       - models:/root/.cache/huggingface

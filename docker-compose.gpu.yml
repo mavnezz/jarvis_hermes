@@ -1,4 +1,10 @@
-# Vollstaendige Compose fuer die Intel-iGPU -- kein Override, kein -f-Geflecht:
+# Vollstaendige Compose fuer die Intel-iGPU -- kein Override, kein -f-Geflecht.
+#
+# ACHTUNG, gemessen: auf einer UHD 630 war die GPU in JEDER Paarung langsamer
+# als die CPU (large-v3-turbo 15,0s gegen 8,5s; small 3,7s gegen 2,5s). Eine
+# iGPU teilt sich den Speicherbus mit der CPU, und genau daran haengt Whisper.
+# Diese Datei bleibt fuer den Fall, dass eine kraeftigere iGPU das dreht --
+# fuer den Normalbetrieb ist docker-compose.yml die richtige Wahl.
 #
 #   docker compose -f docker-compose.gpu.yml up -d
 #   docker compose -f docker-compose.gpu.yml logs -f
