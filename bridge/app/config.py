@@ -6,20 +6,53 @@ import os
 from dataclasses import dataclass, field
 
 
+# Docker's `env_file` does NOT strip trailing comments: a line like
+#   WHISPER_CPU_THREADS=0   # all cores
+# arrives as the literal string "0   # all cores". For numeric and boolean
+# settings we therefore read only the first whitespace-separated token, which
+# is unambiguous. Strings are left alone on purpose — an API key may legally
+# contain '#' or spaces, and silently truncating a secret is far worse than
+# a confusing value.
+def _first_token(raw: str) -> str:
+    return raw.strip().split(None, 1)[0] if raw.strip() else ""
+
+
 def _str(name: str, default: str) -> str:
-    return os.getenv(name, default)
+    value = os.getenv(name)
+    return default if value is None else value.strip()
 
 
 def _int(name: str, default: int) -> int:
-    return int(os.getenv(name, str(default)))
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    token = _first_token(raw)
+    try:
+        return int(token)
+    except ValueError:
+        raise ValueError(
+            f"{name} must be a whole number, got {raw!r}"
+        ) from None
 
 
 def _float(name: str, default: float) -> float:
-    return float(os.getenv(name, str(default)))
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    token = _first_token(raw)
+    try:
+        return float(token)
+    except ValueError:
+        raise ValueError(
+            f"{name} must be a number, got {raw!r}"
+        ) from None
 
 
 def _bool(name: str, default: bool) -> bool:
-    return os.getenv(name, "1" if default else "0").strip().lower() in {"1", "true", "yes", "on"}
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    return _first_token(raw).lower() in {"1", "true", "yes", "on"}
 
 
 DEFAULT_SYSTEM_PROMPT = (

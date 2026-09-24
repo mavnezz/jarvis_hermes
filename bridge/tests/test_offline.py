@@ -5,8 +5,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import os
+
 from app import protocol
 from app.chunker import SentenceChunker
+from app.config import _bool, _float, _int, _str
 
 
 def stream(tokens):
@@ -18,6 +21,48 @@ def stream(tokens):
     if tail:
         out.append(tail)
     return out
+
+
+def _with_env(key, value, fn):
+    old = os.environ.get(key)
+    os.environ[key] = value
+    try:
+        return fn()
+    finally:
+        if old is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = old
+
+
+def test_env_values_survive_trailing_comments():
+    """Docker's env_file keeps trailing comments as part of the value."""
+    assert _with_env("T_INT", "0      # 0 = alle Kerne", lambda: _int("T_INT", 9)) == 0
+    assert _with_env("T_INT", "  4  ", lambda: _int("T_INT", 9)) == 4
+    assert _with_env("T_FLOAT", "0.6 # schwelle", lambda: _float("T_FLOAT", 1.0)) == 0.6
+    assert _with_env("T_BOOL", "1 # an", lambda: _bool("T_BOOL", False)) is True
+    assert _with_env("T_BOOL", "0 # aus", lambda: _bool("T_BOOL", True)) is False
+
+
+def test_empty_env_value_falls_back_to_default():
+    assert _with_env("T_INT", "", lambda: _int("T_INT", 7)) == 7
+    assert _with_env("T_INT", "   ", lambda: _int("T_INT", 7)) == 7
+    assert _with_env("T_BOOL", "", lambda: _bool("T_BOOL", True)) is True
+
+
+def test_bad_number_names_the_variable():
+    try:
+        _with_env("T_INT", "viele", lambda: _int("T_INT", 1))
+    except ValueError as exc:
+        assert "T_INT" in str(exc), exc
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_strings_are_not_comment_stripped():
+    """An API key may legally contain '#'; truncating it would be far worse."""
+    secret = "abc#def ghi"
+    assert _with_env("T_STR", secret, lambda: _str("T_STR", "")) == secret
 
 
 def test_protocol_literals():

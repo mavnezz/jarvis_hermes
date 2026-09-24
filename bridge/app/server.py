@@ -67,12 +67,25 @@ async def serve(cfg: Config) -> None:
 
 
 def run() -> None:
-    cfg = load()
+    import os
+
     logging.basicConfig(
-        level=getattr(logging, cfg.log_level.upper(), logging.INFO),
+        level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").strip().upper(), logging.INFO),
         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
     )
-    logging.getLogger("websockets").setLevel(logging.WARNING)
+    # Beide reden auf INFO ueber jede einzelne Anfrage. httpx wuerde damit
+    # jeden Hermes-Aufruf und jeden Modell-Download protokollieren.
+    for noisy in ("websockets", "httpx", "httpcore", "huggingface_hub", "filelock"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+
+    try:
+        cfg = load()
+    except ValueError as exc:
+        # With `restart: unless-stopped` a bad value would otherwise produce an
+        # endless loop of stack traces. Say what is wrong and stop.
+        _LOG.error("Konfigurationsfehler: %s", exc)
+        _LOG.error("Bitte die betroffene Zeile in .env pruefen und neu starten.")
+        raise SystemExit(2) from None
     try:
         asyncio.run(serve(cfg))
     except KeyboardInterrupt:
