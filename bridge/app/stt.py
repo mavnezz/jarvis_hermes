@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from pathlib import Path
 from typing import Protocol
 
 import numpy as np
@@ -64,19 +65,52 @@ class FasterWhisperBackend:
 class OpenVinoBackend:
     """Intel iGPU (or CPU) via OpenVINO GenAI.
 
-    ``whisper_model`` must point at an exported model directory, e.g.
-
-        optimum-cli export openvino --model openai/whisper-large-v3-turbo \\
-            --weight-format int8 /models/whisper-turbo-int8
+    ``whisper_model`` may be either a local directory holding an exported
+    model, or a HuggingFace repo id such as
+    ``OpenVINO/whisper-large-v3-turbo-int8-ov`` — Intel publishes ready-made
+    conversions, which saves an ``optimum-cli export`` step. WhisperPipeline
+    itself only accepts a local path, so a repo id is downloaded first.
     """
 
     def __init__(self, cfg: Config) -> None:
         import openvino_genai
 
         self._cfg = cfg
+        path = self._resolve(cfg.whisper_model)
         device = cfg.whisper_device.upper()  # "GPU" | "CPU" | "AUTO" | "NPU"
-        _LOG.info("loading openvino whisper from %s on %s", cfg.whisper_model, device)
-        self._pipe = openvino_genai.WhisperPipeline(cfg.whisper_model, device=device)
+
+        try:
+            self._pipe = self._open(openvino_genai, path, device)
+            self._device = device
+        except Exception as exc:  # noqa: BLE001
+            if device == "CPU":
+                raise
+            # Weak iGPUs run out of memory on the large encoder
+            # (CL_OUT_OF_RESOURCES). Falling back beats a restart loop.
+            _LOG.warning("openvino on %s failed (%s)", device, str(exc).strip()[:200])
+            _LOG.warning("falling back to CPU — expect this to be slower")
+            self._pipe = self._open(openvino_genai, path, "CPU")
+            self._device = "CPU"
+
+        _LOG.info("openvino whisper ready on %s (%s)", self._device, path)
+
+    @staticmethod
+    def _resolve(model: str) -> str:
+        if Path(model).is_dir():
+            return model
+        from huggingface_hub import snapshot_download
+
+        _LOG.info("downloading openvino model %s", model)
+        return snapshot_download(model)
+
+    def _open(self, openvino_genai, path: str, device: str):
+        _LOG.info("compiling openvino whisper for %s (first start takes a while)", device)
+        pipe = openvino_genai.WhisperPipeline(path, device=device)
+        # Compilation succeeds long before inference does, so prove the device
+        # can actually run a window before we accept it.
+        silence = np.zeros(16_000, dtype=np.float32)
+        pipe.generate(silence, language=f"<|{self._cfg.language}|>", task="transcribe")
+        return pipe
 
     def transcribe(self, audio: np.ndarray) -> str:
         result = self._pipe.generate(
