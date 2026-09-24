@@ -25,12 +25,15 @@ services:
       # niemand braucht.
       - /dev/dri/renderD128:/dev/dri/renderD128
     group_add:
-      # GID des Geraets auf dem HOST. Auf der UGREEN DXP4800 Plus ist das 105
-      # (Gruppe "render"). Anderswo pruefen mit:
-      #   stat -c '%g %G' /dev/dri/renderD128
-      # Stimmt sie nicht, meldet OpenVINO keinen Fehler -- es sieht die GPU
-      # schlicht nicht und rechnet still auf der CPU weiter.
-      - "105"
+      # GIDs des HOSTS, nicht des Containers. Auf der UGREEN DXP4800 Plus:
+      #   stat -c '%g %G' /dev/dri/renderD128   ->  105 render
+      # Fuer reines Compute ueber den Render-Node reicht 105; 44 (video) ist
+      # mitgenommen, weil dieselbe NAS Jellyfin damit betreibt und es
+      # nichts kostet.
+      # Stimmt die GID nicht, meldet OpenVINO keinen Fehler -- es sieht die
+      # GPU schlicht nicht und rechnet still auf der CPU weiter.
+      - "105"   # render
+      - "44"    # video
     volumes:
       - voices:/voices
       - models:/root/.cache/huggingface
