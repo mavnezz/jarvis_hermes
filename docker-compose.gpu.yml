@@ -1,0 +1,40 @@
+# Vollstaendige Compose fuer die Intel-iGPU -- kein Override, kein -f-Geflecht:
+#
+#   docker compose -f docker-compose.gpu.yml up -d
+#   docker compose -f docker-compose.gpu.yml logs -f
+#
+# Braucht die .env daneben (wegen HERMES_KEY). Die drei Whisper-Werte darin
+# werden hier ueberschrieben, environment sticht env_file.
+services:
+  bridge:
+    image: ghcr.io/mavnezz/jarvis_hermes/bridge:latest-openvino
+    container_name: jarvis-bridge
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    env_file:
+      - .env
+    environment:
+      # Intels vorkonvertiertes Modell -- kein optimum-cli-Export noetig.
+      WHISPER_BACKEND: openvino
+      WHISPER_DEVICE: GPU
+      WHISPER_MODEL: OpenVINO/whisper-large-v3-turbo-int8-ov
+    devices:
+      # Nur der Render-Node, wie in der Jellyfin-Konfiguration auf derselben
+      # NAS. Das ganze /dev/dri wuerde card0/card1 mitnehmen, die hier
+      # niemand braucht.
+      - /dev/dri/renderD128:/dev/dri/renderD128
+    group_add:
+      # GID des Geraets auf dem HOST. Auf der UGREEN DXP4800 Plus ist das 105
+      # (Gruppe "render"). Anderswo pruefen mit:
+      #   stat -c '%g %G' /dev/dri/renderD128
+      # Stimmt sie nicht, meldet OpenVINO keinen Fehler -- es sieht die GPU
+      # schlicht nicht und rechnet still auf der CPU weiter.
+      - "105"
+    volumes:
+      - voices:/voices
+      - models:/root/.cache/huggingface
+
+volumes:
+  voices:
+  models:

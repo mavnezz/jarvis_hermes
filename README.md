@@ -92,20 +92,25 @@ und er ist genau die Art dichter Rechenarbeit, die eine iGPU gut abnimmt —
 nebenbei bleiben die fünf Kerne für Hermes und den Rest der NAS frei. Hier
 lohnt der Umweg also, anders als auf einem i5.
 
-OpenVINO braucht ein exportiertes Modell (aus dem Transformers-Repo, nicht dem
-CTranslate2-Modell oben), `/dev/dri` im Container und die `render`-GID:
+Intel veroeffentlicht vorkonvertierte Whisper-Modelle, deshalb entfaellt der
+Export-Schritt:
 
 ```bash
-optimum-cli export openvino --model primeline/whisper-large-v3-german \
-    --weight-format int8 ./models/whisper-de-int8
+# in .env:
+#   WHISPER_BACKEND=openvino
+#   WHISPER_DEVICE=GPU
+#   WHISPER_MODEL=OpenVINO/whisper-large-v3-turbo-int8-ov
 
-echo "RENDER_GID=$(getent group render | cut -d: -f3)" >> .env
-# in .env: WHISPER_BACKEND=openvino, WHISPER_DEVICE=GPU,
-#          WHISPER_MODEL=/models/whisper-de-int8
-
-WITH_OPENVINO=1 docker compose \
-  -f docker-compose.yml -f docker-compose.intel-gpu.yml up -d --build
+docker compose -f docker-compose.gpu.yml up -d
 ```
+
+Stimmt die Gruppen-ID nicht, sieht OpenVINO die iGPU nicht und faellt still auf
+die CPU zurueck. Pruefen mit `stat -c '%g %G' /dev/dri/renderD128` und
+gegebenenfalls die `group_add`-Zeile anpassen.
+
+Teilt sich die NAS die iGPU mit anderen Diensten — etwa Jellyfin beim
+Transcoding — konkurrieren beide um dieselben Ausfuehrungseinheiten. Das
+bremst im Zweifel beide.
 
 Die Logzeile `stt 4.20s audio in 0.80s (5.2x realtime)` zeigt nach jedem Satz,
 was die Maschine tatsächlich leistet — damit lässt sich CPU gegen iGPU
