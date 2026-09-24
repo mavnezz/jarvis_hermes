@@ -1,0 +1,24 @@
+services:
+  bridge:
+    # Fertiges Image aus der GitHub Action. Auf der NAS reicht damit
+    # `docker compose pull && docker compose up -d` — kein lokaler Build.
+    # Lokal bauen weiterhin mit `docker compose up -d --build`.
+    image: ghcr.io/mavnezz/jarvis_hermes/bridge:latest
+    build:
+      context: ./bridge
+      args:
+        # Auf 1 setzen, um den OpenVINO-Pfad fuer die Intel-iGPU mitzubauen.
+        WITH_OPENVINO: "${WITH_OPENVINO:-0}"
+    container_name: jarvis-bridge
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    env_file:
+      - .env
+    volumes:
+      - voices:/voices
+      - models:/root/.cache/huggingface
+
+volumes:
+  voices:
+  models:

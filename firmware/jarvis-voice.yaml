@@ -1,0 +1,26 @@
+# ============================================================================
+# Voice PE für jarvis_hermes — spricht direkt mit der Bridge, ohne Home Assistant.
+#
+# Anders als xandervanervens Builder-Stubs zieht diese Datei die Upstream-YAML
+# NICHT per Remote-Package von GitHub, sondern lokal aus ./upstream. Grund: zwei
+# nötige Änderungen (reboot_timeout, Wake Word) liegen innerhalb des Packages
+# und lassen sich nicht über Substitutions überschreiben.
+#
+#   ./patch-upstream.sh      <- die beiden Änderungen anwenden (idempotent)
+#   ./flash.sh               <- bauen und flashen
+# ============================================================================
+substitutions:
+  name: jarvis-voice
+  friendly_name: Jarvis
+
+  wifi_ssid: !secret wifi_ssid
+  wifi_password: !secret wifi_password
+  ota_password: !secret ota_password
+  api_key: !secret api_key
+
+  # Host der Bridge (bridge/ in diesem Repo, Port 8765). Der abschliessende
+  # Slash gehört dazu — die Firmware hängt nichts an.
+  va_url: !secret va_url
+
+packages:
+  realtime: !include upstream/home-assistant-voice.realtime.yaml

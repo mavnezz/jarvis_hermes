@@ -1,0 +1,20 @@
+# Override fuer die Intel-iGPU. Nutzung:
+#
+#   WITH_OPENVINO=1 docker compose \
+#     -f docker-compose.yml -f docker-compose.intel-gpu.yml up -d --build
+#
+# Dazu in .env: WHISPER_BACKEND=openvino, WHISPER_DEVICE=GPU und WHISPER_MODEL
+# auf das exportierte Modellverzeichnis zeigen lassen.
+services:
+  bridge:
+    image: ghcr.io/mavnezz/jarvis_hermes/bridge:latest-openvino
+    devices:
+      - /dev/dri:/dev/dri
+    group_add:
+      # Die GID der "render"-Gruppe des HOSTS, nicht des Containers.
+      # Ermitteln mit:  getent group render | cut -d: -f3
+      - "${RENDER_GID:-104}"
+    volumes:
+      - voices:/voices
+      - models:/root/.cache/huggingface
+      - ./models:/models:ro

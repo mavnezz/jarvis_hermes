@@ -1,0 +1,81 @@
+name: bridge image
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'bridge/**'
+      - '.github/workflows/bridge-image.yml'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: ${{ github.repository }}/bridge
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      # Beide Suites stubben ihre Abhaengigkeiten und brauchen weder GPU,
+      # Modelle noch Geraet — deshalb laeuft das hier ohne pip install.
+      - name: Protokoll und Satzsegmentierung
+        run: python bridge/tests/test_offline.py
+      - name: Endpointing und State Machine
+        run: python bridge/tests/test_session.py
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # CPU-Variante: laeuft ueberall, Default.
+          - variant: cpu
+            openvino: '0'
+            suffix: ''
+          # OpenVINO-Variante fuer die Intel-iGPU. Groesseres Image,
+          # braucht /dev/dri und ein exportiertes Modell.
+          - variant: openvino
+            openvino: '1'
+            suffix: '-openvino'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE }}
+          flavor: |
+            suffix=${{ matrix.suffix }},onlatest=true
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./bridge
+          push: true
+          # Die NAS ist x86_64; arm64 waere nur Bauzeit ohne Abnehmer.
+          platforms: linux/amd64
+          build-args: |
+            WITH_OPENVINO=${{ matrix.openvino }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
