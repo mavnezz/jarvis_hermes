@@ -66,6 +66,31 @@ async def serve(cfg: Config) -> None:
         await hermes.aclose()
 
 
+# Diese reden auf INFO ueber jede einzelne HTTP-Anfrage -- beim Modell-Download
+# hunderte Zeilen, spaeter jeder Hermes-Aufruf. Die wichtige stt-Zeile geht
+# darin unter.
+#
+# setLevel() auf den Loggern reicht nicht: faster_whisper und huggingface_hub
+# werden erst beim Laden des Modells importiert und konfigurieren ihr Logging
+# dabei selbst, also nach unserem Aufruf. Ein Filter am Handler haelt, weil er
+# unabhaengig von den Logger-Leveln greift.
+_NOISY = ("httpx", "httpcore", "huggingface_hub", "filelock", "websockets", "urllib3")
+
+
+class _DropNoisyInfo(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.levelno >= logging.WARNING:
+            return True
+        return not record.name.startswith(_NOISY)
+
+
+def _quieten() -> None:
+    for name in _NOISY:
+        logging.getLogger(name).setLevel(logging.WARNING)
+    for handler in logging.getLogger().handlers:
+        handler.addFilter(_DropNoisyInfo())
+
+
 def run() -> None:
     import os
 
@@ -73,10 +98,7 @@ def run() -> None:
         level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").strip().upper(), logging.INFO),
         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
     )
-    # Beide reden auf INFO ueber jede einzelne Anfrage. httpx wuerde damit
-    # jeden Hermes-Aufruf und jeden Modell-Download protokollieren.
-    for noisy in ("websockets", "httpx", "httpcore", "huggingface_hub", "filelock"):
-        logging.getLogger(noisy).setLevel(logging.WARNING)
+    _quieten()
 
     try:
         cfg = load()
